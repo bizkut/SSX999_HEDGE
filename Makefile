@@ -3,11 +3,11 @@
 .PHONY: extract-dependencies deploy-cloud-function deploy-scheduler-job deploy
 
 # ----- personal settings -----
-GCP_PROJECT_ID="<PROJECT-ID>"
-GCP_SERVICE_ACCOUNT="<SERVICE-ACCOUNT-NAME"
-GCP_BUCKET="<BUCKET-NAME>"
+GCP_PROJECT_ID="<YOUR-PROJECT-ID>"
+GCP_SERVICE_ACCOUNT="<YOUR-SERVICE-ACCOUNT-NAME>"
+GCP_BUCKET="<YOUR-BUCKET-NAME>"
 GCP_REGION="europe-west6"
-SCHEDULE="1 */4 * * *"
+SCHEDULE="0 */1 * * *"
 # ----- ----------------- -----
 
 FUNCTION_NAME="trader"

@@ -10,11 +10,11 @@ import os
 from pathlib import Path
 from pathy import Pathy
 
-import env
+from trader import env
 
 if env.is_local():
     root = Path(os.getcwd())
-    root = root.parent if root.name != 'SSX999_Project_Hedge' else root
+    root = root.parent if root.name != 'SSX999_HEDGE' else root
     
     keys_path = root / 'keys'
     public_key_path = keys_path / 'API_Public_Key'
@@ -26,7 +26,21 @@ if env.is_local():
     balance_path = measurements_path / 'account_balance.csv'
     TradedCurrency_path = measurements_path / 'TradedCurrency.pickle'
 
-# ****************** PARAMETERS TO SET ****************** #
+else:
+    gcs_bucket = env.get_var('GCP_BUCKET')
+    bucket_dir = Pathy(f'gs://{gcs_bucket}')
+
+    keys_path = Pathy('keys')
+    public_key_path = keys_path / 'API_Public_Key'
+    private_key_path = keys_path / 'API_Private_Key'
+
+    measurements_path = Pathy('measurements')
+    order_ledger_path = measurements_path / 'order_ledger.csv'
+    trade_ledger_path = measurements_path / 'trade_ledger.csv'
+    balance_path = measurements_path / 'account_balance.csv'
+    TradedCurrency_path = measurements_path / 'TradedCurrency.pickle'
+
+# ****************** START OF PARAMETERS TO SET ****************** #
 BASE = 'BTC'
 QUOTE = 'USDT'
 PAIR = BASE + QUOTE
@@ -36,14 +50,14 @@ TIMEFRAME = '1h'
 TIMEDELTA = '1H'
 CAPITAL = 100
 
-LEVERAGE = 10
+LEVERAGE = 100
 STOP_LOSS = 0.007
 TAKE_PROFIT = 0.03
 REAL_MODE = False # True will perform the strategy on Binance
 
 FAST_PERIOD = 4
 SLOW_PERIOD = 10
-# ****************** PARAMETERS TO SET ****************** #
+# ******************* END OF PARAMETERS TO SET ******************* #
 
 
 # ******************** DO NOT MODIFY ******************** #

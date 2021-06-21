@@ -21,8 +21,8 @@ Potential losses come from fees that are charged by the platform (ie: Binance), 
 
 ## In order to use this project...
 - Open a Binance account, enable Futures, and transfert USDT funds on it.
-- Configure your Futures account in crossed margin and dual-side position mode (Hedge mode)
-- Configure all the settings listed in the config.py file
+- Make sure your Futures account is set with margin crossed and dual-side position mode (Hedge mode) activated.
+- Configure all the settings listed in the config.py file.
 
 
 ## Local install
@@ -46,12 +46,15 @@ make run-bucket
 
 ## Deploy
 
-First, add your GCP project ID, service account and bucket in Makefile
+First, add your GCP project ID, service account and bucket in Makefile.
 ``` Makefile
 GCP_PROJECT_ID="<YOUR_PROJECT_ID>"
 GCP_SERVICE_ACCOUNT="<YOUR_SERVICE_ACCOUNT>"
 GCP_BUCKET="<YOUR_BUCKET>"
+GCP_REGION="<LOCATION>"
+SCHEDULE="0 */1 * * *"
 ```
+Make sure the *SCHEDULE* parameter respects the cron syntax and that it corresponds to the *TIMEFRAME* set in the config.py file.
 
 Then run
 ``` sh

@@ -9,11 +9,11 @@
 import time as tm
 import numpy as np
 import pandas as pd
-from ta.trend import EMAIndicator
+from ta.trend import ema_indicator
 
-import config
-import utils
-import Binance_API
+from trader import config
+from trader import utils
+from trader import Binance_API
 
 class Currency(object):
 
@@ -309,8 +309,8 @@ class Currency(object):
         ohlc = Binance_API.get_contract_klines(self.pair, self.timeframe, contractType='PERPETUAL', limit=limit)
         ohlc = pd.DataFrame(ohlc, columns=config.OHLC_COLUMNS)
         ohlc = ohlc[ohlc['open_time'] < 1000*self.next_timestamp.timestamp()]
-        ohlc['ema_fast'] = EMAIndicator(ohlc['close_price'], window=config.FAST_PERIOD)
-        ohlc['ema_slow'] = EMAIndicator(ohlc['close_price'], window=config.SLOW_PERIOD)
+        ohlc['ema_fast'] = ema_indicator(ohlc['close_price'], window=config.FAST_PERIOD)
+        ohlc['ema_slow'] = ema_indicator(ohlc['close_price'], window=config.SLOW_PERIOD)
         return ohlc
 
 

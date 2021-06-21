@@ -11,10 +11,10 @@ import time as tm
 import logging
 
 
-import Binance_API
-import config
-import models
-import utils
+from trader import Binance_API
+from trader import config
+from trader import models
+from trader import utils
 
 logger = logging.getLogger('trader')
 logger.setLevel(logging.DEBUG)
@@ -63,14 +63,14 @@ def wait_for_next_timestamp(TradedCurrency):
     try:
         counter = 0
         server_time = Binance_API.get_server_time() / 1000
-        while server_time < TradedCurrency.next_timestamp.timestamp and counter < 10:
-            tm.sleep(int(TradedCurrency.next_timestamp.timestamp - server_time + 5))
+        while server_time < TradedCurrency.next_timestamp.timestamp() and counter < 10:
+            tm.sleep(int(TradedCurrency.next_timestamp.timestamp() - server_time + 5))
             server_time = Binance_API.get_server_time() / 1000
             counter += 1
     except:
         error_msg = f'Error: Either cannot get server time (API overloaded) or next timestamp never reached'
         error_msg += f"\nServer time: {pd.Timestamp(server_time, unit='s')}"
-        error_msg += f"\nNext timestamp: {pd.Timestamp(TradedCurrency.next_timestamp.timestamp, unit='s')}"
+        error_msg += f"\nNext timestamp: {TradedCurrency.next_timestamp}"
         error_msg += '\n[continue_recurrent_algorithm: error4]'
         logger.error(error_msg)
         return
@@ -175,7 +175,11 @@ def continue_recurrent_algorithm():
     TradedCurrency = utils.load_pickle(config.TradedCurrency_path)
     is_cross = check_api_keys_functional(TradedCurrency)
     check_margin_type(TradedCurrency, is_cross)    
-    check_position_mode(TradedCurrency)
+    check_position_mode()
+    server_time = Binance_API.get_server_time() / 1000
+    if server_time + 180 < TradedCurrency.next_timestamp.timestamp():
+        logger.info('Process aborted.\ncontinue_recurrent_algorithm() called to  early.')
+        return
     wait_for_next_timestamp(TradedCurrency)
 
     # Loop through all open position

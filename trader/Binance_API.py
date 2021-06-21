@@ -14,18 +14,15 @@ import hashlib
 import requests
 from urllib.parse import urlencode
 
-import utils
-import env
-import config
+from trader import utils
+from trader import env
+from trader import config
 
 
 def read_keys():
-    if env.is_local():
-        api_key = utils.read_file(path=config.public_key_path)
-        api_secret = utils.read_file(path=config.private_key_path)
-        return api_key, api_secret
-    # ***************************** WRITE LATER ***************************** #
-    # ******************* Google Cloud Platform Management ****************** #
+    api_key = utils.read_file(path=config.public_key_path)
+    api_secret = utils.read_file(path=config.private_key_path)
+    return api_key, api_secret
 
 
 KEY, SECRET = read_keys()
