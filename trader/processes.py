@@ -95,18 +95,39 @@ def first_long_stop_loss_activation(TradedCurrency, i):
         TradedCurrency.contracts[i]['long']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
         # Cancel previous short contract stop loss & open a new one (with stop at entry but unchanged profit)
         TradedCurrency.contracts[i]['short']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
-        order_settings = {
-            'symbol': TradedCurrency.pair,
-            'side': 'BUY',
-            'positionSide': 'SHORT',
-            'type': 'STOP_MARKET',
-            'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
-            'stopPrice': str(np.float(TradedCurrency.open_positions[i]['long']['exit'])) # + 10
-        }
-        try:
+
+        price = Binance_API.get_price(TradedCurrency.pair)
+        if price < np.float(TradedCurrency.open_positions[i]['long']['exit']):
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'BUY',
+                'positionSide': 'SHORT',
+                'type': 'STOP_MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
+                'stopPrice': str(np.float(TradedCurrency.open_positions[i]['long']['exit'])) # + 10
+            }
             TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-        except:
-            TradedCurrency.contracts[i]['short']['stop loss']['status'] = 'immediately activated'
+        elif price >= np.float(TradedCurrency.open_positions[i]['long']['exit']) + config.EPSILON:
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'BUY',
+                'positionSide': 'SHORT',
+                'type': 'MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty'])
+            }
+            TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
+            TradedCurrency = short_stop_loss_closing(TradedCurrency, i)
+        else:
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'BUY',
+                'positionSide': 'SHORT',
+                'type': 'STOP_MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
+                'stopPrice': str(np.float(TradedCurrency.open_positions[i]['long']['exit']) + config.EPSILON)
+            }
+            TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
+
         TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.contracts[i]['short']['stop loss']['price']
         TradedCurrency.open_positions[i]['short']['actualised'] = True
     else:
@@ -129,18 +150,39 @@ def first_short_stop_loss_activation(TradedCurrency, i):
         TradedCurrency.contracts[i]['short']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
         # Cancel previous short contract stop loss & open a new one (with stop at entry but unchanged profit)
         TradedCurrency.contracts[i]['long']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
-        order_settings = {
-            'symbol': TradedCurrency.pair,
-            'side': 'SELL',
-            'positionSide': 'LONG',
-            'type': 'STOP_MARKET',
-            'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
-            'stopPrice': str(np.float(TradedCurrency.open_positions[i]['short']['exit'])) # - 10
-        }
-        try:
+        
+        price = Binance_API.get_price(TradedCurrency.pair)
+        if price > np.float(TradedCurrency.open_positions[i]['long']['exit']):
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'SELL',
+                'positionSide': 'LONG',
+                'type': 'STOP_MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
+                'stopPrice': str(np.float(TradedCurrency.open_positions[i]['short']['exit']))
+            }
             TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-        except:
-            TradedCurrency.contracts[i]['long']['stop loss']['status'] = 'immediately activated'
+        elif price <= np.float(TradedCurrency.open_positions[i]['short']['exit']) - config.EPSILON:
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'SELL',
+                'positionSide': 'LONG',
+                'type': 'MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty'])
+            }
+            TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
+            TradedCurrency = long_stop_loss_closing(TradedCurrency, i)
+        else:
+            order_settings = {
+                'symbol': TradedCurrency.pair,
+                'side': 'SELL',
+                'positionSide': 'LONG',
+                'type': 'STOP_MARKET',
+                'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
+                'stopPrice': str(np.float(TradedCurrency.open_positions[i]['short']['exit']) - config.EPSILON)
+            }
+            TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
+
         TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.contracts[i]['long']['stop loss']['price']
         TradedCurrency.open_positions[i]['long']['actualised'] = True
     else:
