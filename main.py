@@ -17,7 +17,12 @@ def main(data, context):
     # for the code to be compatible with Cloud Function
 
     # Case : initializing the algorithm
-    if not config.TradedCurrency_path.exists():
+    if env.is_local():
+        TC_path = config.TradedCurrency_path
+    else:
+        TC_path = config.bucket_dir / config.TradedCurrency_path
+    
+    if not TC_path.exists():
         if not config.measurements_path.exists():
             os.mkdir(config.measurements_path)
         processes.initiate_algorithm()
@@ -25,11 +30,12 @@ def main(data, context):
     # Case : algorithm already initialized
     else:
         processes.continue_recurrent_algorithm()
+    return
 
 
 if __name__ == '__main__':
     if env.is_local():
         data, context = {}, {}
-        main(data, context)
+        #main(data, context)
     else:
         main()

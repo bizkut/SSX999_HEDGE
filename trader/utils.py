@@ -9,15 +9,17 @@
 import pickle
 from typing import Union
 
-import numpy as np
 import pandas as pd
 from google.cloud import storage
-from pandas import Timestamp as ts
 from pathy.base import Pathy
 from pathlib import Path
 
-from trader import config
-from trader import env
+try:
+    from trader import config
+    from trader import env
+except:
+    import config
+    import env
 
 
 def get_blob(path: Union[Path, Pathy]):
@@ -31,7 +33,7 @@ def dump_as_pickle(content, path: Union[Path, Pathy]):
         with open(path, 'wb') as _file:
             pickle.dump(content, _file)
     else:
-        blob = get_blob(path=path.name)
+        blob = get_blob(path=str(path))
         pickle_out = pickle.dumps(content)
         blob.upload_from_string(pickle_out)
     return
@@ -39,27 +41,24 @@ def dump_as_pickle(content, path: Union[Path, Pathy]):
 
 def load_pickle(path: Union[Path, Pathy]):
     if env.is_local():
-        with open(path, 'rb') as _file:
+        with open(str(path), 'rb') as _file:
             return pickle.load(_file)
-    blob = get_blob(path=f'{config.generated_data_dir.name}/{path.name}')
+    blob = get_blob(path=str(path))
     pickle_in = blob.download_as_string()
     return pickle.loads(pickle_in)
 
 
 def dump_as_csv(content: pd.DataFrame, path: Union[Path, Pathy]):
     # Pandas can write directly in a Bucket
-    content.to_csv(path, sep=config.CSV_SEP, encoding='utf-8')
+    content.to_csv(str(path), sep=config.CSV_SEP, encoding='utf-8')
     return
 
 
 def read_csv(path: Union[Path, Pathy]):
-    if env.is_local():
-        df = pd.read_csv(path, sep=config.CSV_SEP, encoding='utf-8')
-        if df.columns[0] == 'Unnamed: 0':
-            df = df[df.columns[1:]]
-        return df
-    # Write GCP side or verify if pandas can read directly in a Bucket
-    return
+    df = pd.read_csv(str(path), sep=config.CSV_SEP, encoding='utf-8')
+    if df.columns[0] == 'Unnamed: 0':
+        df = df[df.columns[1:]]
+    return df
 
 
 def read_file(path: Union[Path, Pathy]):

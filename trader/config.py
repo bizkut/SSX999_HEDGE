@@ -10,7 +10,10 @@ import os
 from pathlib import Path
 from pathy import Pathy
 
-from trader import env
+try:
+    from trader import env
+except:
+    import env
 
 if env.is_local():
     root = Path(os.getcwd())
@@ -34,13 +37,13 @@ else:
     public_key_path = keys_path / 'API_Public_Key'
     private_key_path = keys_path / 'API_Private_Key'
 
-    measurements_path = Pathy('measurements')
+    measurements_path = bucket_dir / 'measurements'
     order_ledger_path = measurements_path / 'order_ledger.csv'
     trade_ledger_path = measurements_path / 'trade_ledger.csv'
     balance_path = measurements_path / 'account_balance.csv'
-    TradedCurrency_path = measurements_path / 'TradedCurrency.pickle'
+    TradedCurrency_path = Pathy('measurements') / 'TradedCurrency.pickle'
 
-# ****************** START OF PARAMETERS TO SET ****************** #
+# ****************** BEGINNING OF PARAMETERS TO SET ****************** #
 BASE = 'BTC'
 QUOTE = 'USDT'
 PAIR = BASE + QUOTE
@@ -48,12 +51,11 @@ BASE_AMOUNT_PRECISION = 3
 BASE_PRICE_PRECISION = 2
 TIMEFRAME = '1h'
 TIMEDELTA = '1H'
-CAPITAL = 100
 
-LEVERAGE = 100
+LEVERAGE = 5
 STOP_LOSS = 0.007
 TAKE_PROFIT = 0.03
-REAL_MODE = False # True will perform the strategy on Binance
+REAL_MODE = True # True will perform the strategy on Binance
 
 FAST_PERIOD = 4
 SLOW_PERIOD = 10

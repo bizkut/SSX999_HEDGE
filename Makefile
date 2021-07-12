@@ -3,18 +3,18 @@
 .PHONY: extract-dependencies deploy-cloud-function deploy-scheduler-job deploy
 
 # ----- personal settings -----
-GCP_PROJECT_ID="<YOUR-PROJECT-ID>"
-GCP_SERVICE_ACCOUNT="<YOUR-SERVICE-ACCOUNT-NAME>"
-GCP_BUCKET="<YOUR-BUCKET-NAME>"
+GCP_PROJECT_ID="ssx999-hedge"
+GCP_SERVICE_ACCOUNT="ssx999-hedge-account@ssx999-hedge.iam.gserviceaccount.com"
+GCP_BUCKET="ssx999-hedge-b1"
 GCP_REGION="europe-west6"
-SCHEDULE="0 */1 * * *"
+SCHEDULE="*/1 * * * *"
 # ----- ----------------- -----
 
-FUNCTION_NAME="trader"
-TOPIC_NAME="trader_topic"
+FUNCTION_NAME="hedger"
+TOPIC_NAME="hedger_topic"
 CODE_ENTRYPOINT=main
 
-JOB_NAME="trader_job"
+JOB_NAME="hedger_job"
 MESSAGE_BODY="Run successful"
 
 update-requirements:

@@ -14,14 +14,21 @@ import hashlib
 import requests
 from urllib.parse import urlencode
 
-from trader import utils
-from trader import env
-from trader import config
+try:
+    from trader import utils
+    from trader import config
+except:
+    import utils
+    import config
 
 
 def read_keys():
     api_key = utils.read_file(path=config.public_key_path)
     api_secret = utils.read_file(path=config.private_key_path)
+    if type(api_key) == bytes:
+        api_key = api_key.decode('utf-8')
+    if type(api_secret) == bytes:
+        api_secret = api_secret.decode('utf-8')
     return api_key, api_secret
 
 
@@ -332,7 +339,7 @@ def get_price(pair: str):
 # ACCOUNT ENDPOINTS
 # -----------------
 
-def get_futures_account_balance(recvWindow=1000):
+def get_futures_account_balance(recvWindow=1500):
     """
     Read Futures account balance (V2)
 
@@ -371,7 +378,7 @@ def get_futures_account_balance(recvWindow=1000):
     return None
 
 
-def is_hedge_mode(recvWindow=1000):
+def is_hedge_mode(recvWindow=1500):
     """
     Get user's position mode (Hedge Mode or One-way Mode ) on EVERY symbols.
 
@@ -387,7 +394,7 @@ def is_hedge_mode(recvWindow=1000):
     return dualSidePosition
 
 
-def change_position_mode(hedgeMode: bool, recvWindow=1000):
+def change_position_mode(hedgeMode: bool, recvWindow=1500):
     """
     Change user's position mode (Hedge Mode or One-way Mode ) on EVERY symbols.
 
@@ -461,7 +468,7 @@ def create_order(order_settings: dict):
     return order
 
 
-def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
+def place_mutliple_orders(all_order_settings: list, recvWindow=1500):
     """
     Send in a new order.
 
@@ -524,7 +531,7 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
     return orders
 
 
-def query_order(pair: str, orderId: int, recvWindow=1000):
+def query_order(pair: str, orderId: int, recvWindow=1500):
     """
     Check an order's status.
 
@@ -542,7 +549,7 @@ def query_order(pair: str, orderId: int, recvWindow=1000):
     return order
 
 
-def query_current_all_open_orders(pair: str, recvWindow=1000):
+def query_current_all_open_orders(pair: str, recvWindow=1500):
     """
     Get all open orders on a symbol. Careful when accessing this with no symbol.
 
@@ -560,7 +567,7 @@ def query_current_all_open_orders(pair: str, recvWindow=1000):
     return orders
 
 
-def cancel_order(pair: str, orderId: int, recvWindow=1000):
+def cancel_order(pair: str, orderId: int, recvWindow=1500):
     """
     Cancel an active order.
 
@@ -575,10 +582,10 @@ def cancel_order(pair: str, orderId: int, recvWindow=1000):
     url_path = '/fapi/v1/order'
     params = {'symbol': pair, 'orderId': orderId, 'recvWindow': recvWindow}
     response = send_signed_request('DELETE', url_path, params)
-    return response['status'] == 'CANCELED'
+    return response
 
 
-def cancel_all_open_orders(pair: str, recvWindow=1000):
+def cancel_all_open_orders(pair: str, recvWindow=1500):
     """
     Cancel all active orders.
 
@@ -595,7 +602,7 @@ def cancel_all_open_orders(pair: str, recvWindow=1000):
     return response['code'] == 200
 
 
-def change_initial_leverage(pair: str, leverage: int, recvWindow=1000):
+def change_initial_leverage(pair: str, leverage: int, recvWindow=1500):
     """
     Change user's initial leverage of specific symbol market.
 
@@ -618,7 +625,7 @@ def change_initial_leverage(pair: str, leverage: int, recvWindow=1000):
     return leverage_set
 
 
-def change_margin_type(pair: str, marginType: str, recvWindow=1000):
+def change_margin_type(pair: str, marginType: str, recvWindow=1500):
     """
     Set margin type as either 'ISOLATED' or 'CROSSED' for a specific pair.
 
@@ -644,7 +651,7 @@ def change_margin_type(pair: str, marginType: str, recvWindow=1000):
         return response['code'] == '200'
 
 
-def get_current_position_information(pair: str, recvWindow=1000):
+def get_current_position_information(pair: str, recvWindow=1500):
     """
     Get current position information.
 
@@ -687,12 +694,12 @@ def get_current_position_information(pair: str, recvWindow=1000):
     return positions
 
 
-def is_margin_cross(pair: str, recvWindow=1000):
+def is_margin_cross(pair: str, recvWindow=1500):
     margin_type = get_current_position_information(pair, recvWindow)[0]['marginType']
     return margin_type == 'cross'
 
 
-def get_commission_rate(pair: str, recvWindow=1000):
+def get_commission_rate(pair: str, recvWindow=1500):
     """
     Get user's current commission rates for a specific pair.
 
