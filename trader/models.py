@@ -80,6 +80,13 @@ class Currency(object):
         price = Binance_API.get_price(self.pair)
         return price
 
+    def get_latest_close_price(self):
+        # The second candle is the started yet not finished candle.
+        # We want the close price of the candle that just terminated.
+        candle = Binance_API.get_klines(pair='BTCUSDT', intervals='1m', limit=2)
+        close_price = candle[0][4]
+        return close_price
+
     def set_positions(self, position_idx):
         t = int(tm.time())
 
@@ -96,7 +103,7 @@ class Currency(object):
             long_take_profit = np.float(self.contracts[position_idx]['long']['take profit']['stopPrice'])
             short_take_profit = np.float(self.contracts[position_idx]['short']['take profit']['stopPrice'])
         else:
-            close_price = self.update_price()
+            close_price = self.get_latest_close_price()
             long_price = close_price
             short_price = close_price
             amount = self.capital / (self.max_open_positions + 1 - self.n_open_positions)
@@ -155,7 +162,7 @@ class Currency(object):
             return
 
         # Prepare orders
-        price = self.update_price()
+        price = self.get_latest_close_price()
         # We need to take into account the precision of a contract
         amount = self.capital / (self.max_open_positions + 1 - self.n_open_positions)
         qty = round(np.floor(0.45*self.leverage*amount/price * 10**config.BASE_AMOUNT_PRECISION) / (10**config.BASE_AMOUNT_PRECISION), 3)
@@ -187,26 +194,6 @@ class Currency(object):
         long_entry = np.float(self.contracts[position_idx]['long']['order']['avgPrice'])
         short_entry = np.float(self.contracts[position_idx]['short']['order']['avgPrice'])
 
-        long_order_stop_loss = {
-            'symbol': self.pair,
-            'side': 'SELL',
-            'positionSide': 'LONG',
-            'type': 'STOP_MARKET',
-            'workingType': 'MARK_PRICE',
-            'priceProtect': 'TRUE',
-            'quantity': str(self.contracts[position_idx]['long']['order']['executedQty']),
-            'stopPrice': str(round(long_entry * (1-self.stop_loss), 2))
-        }
-        short_order_stop_loss = {
-            'symbol': self.pair,
-            'side': 'BUY',
-            'positionSide': 'SHORT',
-            'type': 'STOP_MARKET',
-            'workingType': 'MARK_PRICE',
-            'priceProtect': 'TRUE',
-            'quantity': str(self.contracts[position_idx]['short']['order']['executedQty']),
-            'stopPrice': str(round(short_entry * (1+self.stop_loss), 2))
-        }
         long_order_take_profit = {
             'symbol': self.pair,
             'side': 'SELL',
@@ -227,7 +214,7 @@ class Currency(object):
             'quantity': str(self.contracts[position_idx]['short']['order']['executedQty']),
             'stopPrice': str(round(short_entry * (1-self.take_profit), 2))
         }
-        orders_list = [long_order_stop_loss, short_order_stop_loss, long_order_take_profit, short_order_take_profit]
+        orders_list = [long_order_take_profit, short_order_take_profit]
         return orders_list
 
     def place_orders_simultaneously(self, order_list):
@@ -263,24 +250,15 @@ class Currency(object):
         Response:
             True if stop loss activated recently, else False
         """
-        # Case: real mode activated
-        if self.real_mode:
-            stop_loss_contract = self.contracts[position_idx][position_side]['stop loss']
-            contract_status = Binance_API.query_order(self.pair, stop_loss_contract['orderId'])['status']
-            case1 = (self.open_positions[position_idx][position_side]['actualised'] == False and contract_status == 'FILLED')
-            case2 = (self.open_positions[position_idx][position_side]['actualised'] == True and contract_status == 'FILLED' and self.open_positions[position_idx][position_side]['exit'] == 0)
-            return case1 or case2
-        # Case: simulation mode
+        if position_side == 'long':
+            case1 = self.open_positions[position_idx]['long']['actualised'] == False and self.get_latest_close_price() < self.open_positions[position_idx]['long']['stop loss']
+            case2 = self.open_positions[position_idx]['long']['actualised'] == True and self.get_latest_close_price() < self.open_positions[position_idx]['long']['stop loss']
+            case2 = case2 and self.open_positions[position_idx]['long']['exit'] == 0
         else:
-            if position_side == 'long':
-                case1 = self.open_positions[position_idx]['long']['actualised'] == False and self.update_price() < self.open_positions[position_idx]['long']['stop loss']
-                case2 = self.open_positions[position_idx]['long']['actualised'] == True and self.update_price() < self.open_positions[position_idx]['long']['stop loss']
-                case2 = case2 and self.open_positions[position_idx]['long']['exit'] == 0
-            else:
-                case1 = self.open_positions[position_idx]['short']['actualised'] == False and self.update_price() > self.open_positions[position_idx]['short']['stop loss']
-                case2 = self.open_positions[position_idx]['short']['actualised'] == True and self.update_price() > self.open_positions[position_idx]['short']['stop loss']
-                case2 = case2 and self.open_positions[position_idx]['short']['exit'] == 0
-            return case1 or case2
+            case1 = self.open_positions[position_idx]['short']['actualised'] == False and self.get_latest_close_price() > self.open_positions[position_idx]['short']['stop loss']
+            case2 = self.open_positions[position_idx]['short']['actualised'] == True and self.get_latest_close_price() > self.open_positions[position_idx]['short']['stop loss']
+            case2 = case2 and self.open_positions[position_idx]['short']['exit'] == 0
+        return case1 or case2
 
     def is_take_profit_activated(self, position_idx, position_side):
         """
@@ -299,9 +277,9 @@ class Currency(object):
             case = (self.open_positions[position_idx][position_side]['actualised'] == True and contract_status == 'FILLED')
         else:
             if position_side == 'long':
-                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] < self.update_price())
+                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] < self.get_latest_close_price())
             else:
-                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] > self.update_price())
+                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] > self.get_latest_close_price())
         return case
 
 
@@ -323,10 +301,14 @@ class Currency(object):
         # Compute final trade stats
         self.open_positions[position_idx]['long']['type'] = 'LONG'
         self.open_positions[position_idx]['short']['type'] = 'SHORT'
-        self.open_positions[position_idx]['long']['abs capital gain'] = (self.open_positions[position_idx]['long']['exit']/self.open_positions[position_idx]['long']['entry'] - 1) * self.leverage / 100
-        self.open_positions[position_idx]['short']['abs capital gain'] = (self.open_positions[position_idx]['short']['entry']/self.open_positions[position_idx]['short']['exit'] - 1) * self.leverage / 100
-        self.open_positions[position_idx]['long']['capital gain'] = self.open_positions[position_idx]['long']['abs capital gain'] * self.open_positions[position_idx]['long']['qty'] * self.open_positions[position_idx]['long']['entry']
-        self.open_positions[position_idx]['short']['capital gain'] = self.open_positions[position_idx]['short']['abs capital gain'] * self.open_positions[position_idx]['short']['qty'] * self.open_positions[position_idx]['short']['exit']
+        self.open_positions[position_idx]['long']['abs capital gain %'] = (self.open_positions[position_idx]['long']['exit']/self.open_positions[position_idx]['long']['entry'] - 1) * self.leverage / 100
+        self.open_positions[position_idx]['short']['abs capital gain %'] = (self.open_positions[position_idx]['short']['entry']/self.open_positions[position_idx]['short']['exit'] - 1) * self.leverage / 100
+        self.open_positions[position_idx]['long']['abs capital gain'] = self.open_positions[position_idx]['long']['qty'] * self.open_positions[position_idx]['long']['entry'] * (self.open_positions[position_idx]['long']['exit']/self.open_positions[position_idx]['long']['entry'] - 1)
+        self.open_positions[position_idx]['short']['abs capital gain'] = self.open_positions[position_idx]['short']['qty'] * self.open_positions[position_idx]['short']['entry'] * (self.open_positions[position_idx]['short']['entry']/self.open_positions[position_idx]['short']['exit'] - 1)
+        self.open_positions[position_idx]['long']['fees'] = 0.0004 * self.open_positions[position_idx]['long']['qty'] * (self.open_positions[position_idx]['long']['entry'] + self.open_positions[position_idx]['long']['exit'])
+        self.open_positions[position_idx]['short']['fees'] = 0.0004 * self.open_positions[position_idx]['short']['qty'] * (self.open_positions[position_idx]['short']['entry'] + self.open_positions[position_idx]['short']['exit'])
+        self.open_positions[position_idx]['long']['net capital gain'] = self.open_positions[position_idx]['long']['abs capital gain'] - self.open_positions[position_idx]['long']['fees']
+        self.open_positions[position_idx]['short']['net capital gain'] = self.open_positions[position_idx]['short']['abs capital gain'] - self.open_positions[position_idx]['short']['fees']
         # Update TradeLedger
         trade_ledger = utils.read_csv(config.trade_ledger_path)
         trade_ledger = trade_ledger.append(self.open_positions[position_idx]['long'], ignore_index=True)
@@ -353,7 +335,7 @@ class Currency(object):
         limit = 3*config.SLOW_PERIOD
         ohlc = Binance_API.get_contract_klines(self.pair, self.timeframe, contractType='PERPETUAL', limit=limit)
         ohlc = pd.DataFrame(ohlc, columns=config.OHLC_COLUMNS)
-        ohlc = ohlc[ohlc['open_time'] < 1000*(self.next_timestamp - self.timedelta).timestamp()]
+        ohlc = ohlc[ohlc['open_time'] < 1000*self.next_timestamp.timestamp()]
         ohlc['ema_fast'] = ema_indicator(ohlc['close_price'], config.FAST_PERIOD)
         ohlc['ema_slow'] = ema_indicator(ohlc['close_price'], config.SLOW_PERIOD)
         return ohlc
