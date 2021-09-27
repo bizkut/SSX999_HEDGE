@@ -7,7 +7,7 @@
 
 
 import numpy as np
-from numpy.lib.type_check import real
+import numpy as np
 import pandas as pd
 import pickle
 import logging

@@ -87,111 +87,46 @@ def wait_for_next_timestamp(TradedCurrency):
 def first_long_stop_loss_activation(TradedCurrency, i):
     if TradedCurrency.real_mode:
         # Contract is filled => update : long position (exit, exit time, actualised) & short position (stop loss, actualised)
-        filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
+        stop_order_settings = {
+            'symbol': TradedCurrency.pair,
+            'side': 'SELL',
+            'positionSide': 'LONG',
+            'type': 'MARKET',
+            'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
+        }
+        filled_contract = TradedCurrency.place_single_order(stop_order_settings)
+        filled_contract = Binance_API.query_order(TradedCurrency.pair, filled_contract['orderId'])
         TradedCurrency.contracts[i]['long']['stop loss'] = filled_contract
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['long']['exit'] = np.float(filled_contract['avgPrice'])
         TradedCurrency.open_positions[i]['long']['actualised'] = True
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'STOP LOSS 1'
         TradedCurrency.contracts[i]['long']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
-        # Cancel previous short contract stop loss & open a new one (with stop at entry but unchanged profit)
-        TradedCurrency.contracts[i]['short']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
-
-        price = Binance_API.get_price(TradedCurrency.pair)
-        counter = 0
-        while not (price < np.float(TradedCurrency.open_positions[i]['long']['exit']*(1-2*TradedCurrency.fee_rate))) and counter < 60:
-            tm.sleep(30)
-            counter += 1
-            price = Binance_API.get_price(TradedCurrency.pair)
-        if price < np.float(TradedCurrency.open_positions[i]['long']['exit']*(1-2*TradedCurrency.fee_rate)):
-            order_settings = {
-                'symbol': TradedCurrency.pair,
-                'side': 'BUY',
-                'positionSide': 'SHORT',
-                'type': 'STOP_MARKET',
-                'workingType': 'MARK_PRICE',
-                'priceProtect': 'TRUE',
-                'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
-                'stopPrice': str(round(np.float(TradedCurrency.open_positions[i]['long']['exit']*(1-2*TradedCurrency.fee_rate)), config.BASE_PRICE_PRECISION)) # + 10
-            }
-            TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-        else:
-            order_settings = {
-                'symbol': TradedCurrency.pair,
-                'side': 'BUY',
-                'positionSide': 'SHORT',
-                'type': 'MARKET',
-                'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty'])
-            }
-            TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-            TradedCurrency.contracts[i]['short']['stop loss'] = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
-            TradedCurrency.open_positions[i]['short']['stop loss'] = np.float(TradedCurrency.contracts[i]['short']['stop loss']['avgPrice'])
-            TradedCurrency.open_positions[i]['short']['actualised'] = True
-            TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
-            TradedCurrency.open_positions[i]['short']['exit'] = TradedCurrency.open_positions[i]['short']['stop loss']
-            TradedCurrency.contracts[i]['short']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
-            TradedCurrency.update_ledgers(i)
-            TradedCurrency.close_position(i)
-
-            # Update portfolio content according to Binance Futures account balance
-            account_balance = Binance_API.get_futures_account_balance() 
-            if not TradedCurrency.real_mode:
-                account_balance['balance'] = TradedCurrency.capital
-            df_balance = utils.read_csv(config.balance_path)
-            df_balance = df_balance.append(account_balance, ignore_index=True)
-            utils.dump_as_csv(df_balance, config.balance_path)
-            return TradedCurrency
-
-
-        # elif price >= np.float(TradedCurrency.open_positions[i]['long']['exit']) + config.EPSILON:
-        #     order_settings = {
-        #         'symbol': TradedCurrency.pair,
-        #         'side': 'BUY',
-        #         'positionSide': 'SHORT',
-        #         'type': 'MARKET',
-        #         'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty'])
-        #     }
-        #     TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-            
-        #     TradedCurrency.open_positions[i]['short']['stop loss'] = np.float(TradedCurrency.contracts[i]['short']['stop loss']['avgPrice'])
-        #     TradedCurrency.open_positions[i]['short']['actualised'] = True
-        #     TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
-        #     TradedCurrency.open_positions[i]['short']['exit'] = TradedCurrency.open_positions[i]['short']['stop loss']
-        #     TradedCurrency.contracts[i]['short']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
-        #     TradedCurrency.update_ledgers(i)
-        #     TradedCurrency.close_position(i)
-
-        #     # Update portfolio content according to Binance Futures account balance
-        #     account_balance = Binance_API.get_futures_account_balance() 
-        #     if not TradedCurrency.real_mode:
-        #         account_balance['balance'] = TradedCurrency.capital
-        #     df_balance = utils.read_csv(config.balance_path)
-        #     df_balance = df_balance.append(account_balance, ignore_index=True)
-        #     utils.dump_as_csv(df_balance, config.balance_path)
-        #     return TradedCurrency
-        # else:
-        #     order_settings = {
-        #         'symbol': TradedCurrency.pair,
-        #         'side': 'BUY',
-        #         'positionSide': 'SHORT',
-        #         'type': 'STOP_MARKET',
-        #         'workingType': 'MARK_PRICE',
-        #         'priceProtect': 'TRUE',
-        #         'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
-        #         'stopPrice': str(round(np.float(TradedCurrency.open_positions[i]['long']['exit']) + config.EPSILON, config.BASE_PRICE_PRECISION))
-        #     }
-        #     TradedCurrency.contracts[i]['short']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-
-        TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.contracts[i]['short']['stop loss']['stopPrice']
+        
         TradedCurrency.open_positions[i]['short']['actualised'] = True
+        if TradedCurrency.update_price() < TradedCurrency.open_positions[i]['long']['exit'] * (1-2*TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit'] * (1-2*TradedCurrency.fee_rate)
+        elif TradedCurrency.update_price() < TradedCurrency.open_positions[i]['long']['exit'] * (1-TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit'] * (1-TradedCurrency.fee_rate)
+        else:
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit']
     else:
         TradedCurrency.open_positions[i]['long']['exit'] = TradedCurrency.open_positions[i]['long']['stop loss']
         TradedCurrency.open_positions[i]['long']['actualised'] = True
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'STOP LOSS 1'
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
-        TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['stop loss'] * (1-TradedCurrency.fee_rate)
-        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'])
+        TradedCurrency.open_positions[i]['short']['actualised'] = True
+        if TradedCurrency.update_price() < TradedCurrency.open_positions[i]['long']['exit'] * (1-2*TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit'] * (1-2*TradedCurrency.fee_rate)
+        elif TradedCurrency.update_price() < TradedCurrency.open_positions[i]['long']['exit'] * (1-TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit'] * (1-TradedCurrency.fee_rate)
+        else:
+            TradedCurrency.open_positions[i]['short']['stop loss'] = TradedCurrency.open_positions[i]['long']['exit']
+
+        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] / TradedCurrency.open_positions[i]['long']['leverage']
+        money_back += TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] * (TradedCurrency.open_positions[i]['long']['exit']/TradedCurrency.open_positions[i]['long']['entry'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
     
     TradedCurrency.update_capital()
     return TradedCurrency
@@ -200,113 +135,47 @@ def first_long_stop_loss_activation(TradedCurrency, i):
 def first_short_stop_loss_activation(TradedCurrency, i):
     if TradedCurrency.real_mode:
         # Contract is filled => update : short position (exit, exit time, actualised) & long position (stop loss, actualised)
-        filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
+        stop_order_settings = {
+            'symbol': TradedCurrency.pair,
+            'side': 'BUY',
+            'positionSide': 'SHORT',
+            'type': 'MARKET',
+            'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
+        }
+        filled_contract = TradedCurrency.place_single_order(stop_order_settings)
+        filled_contract = Binance_API.query_order(TradedCurrency.pair, filled_contract['orderId'])
         TradedCurrency.contracts[i]['short']['stop loss'] = filled_contract
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['short']['exit'] = np.float(filled_contract['avgPrice'])
         TradedCurrency.open_positions[i]['short']['actualised'] = True
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'STOP LOSS 1'
         TradedCurrency.contracts[i]['short']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
-        # Cancel previous short contract stop loss & open a new one (with stop at entry but unchanged profit)
-        TradedCurrency.contracts[i]['long']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
-        
-        price = Binance_API.get_price(TradedCurrency.pair)
-        counter = 0
-        while not (price > np.float(TradedCurrency.open_positions[i]['short']['exit']*(1+2*TradedCurrency.fee_rate))) and counter < 60:
-            tm.sleep(30)
-            counter += 1
-            price = Binance_API.get_price(TradedCurrency.pair)
-        if price > np.float(TradedCurrency.open_positions[i]['short']['exit']*(1+2*TradedCurrency.fee_rate)):
-            order_settings = {
-                'symbol': TradedCurrency.pair,
-                'side': 'SELL',
-                'positionSide': 'LONG',
-                'type': 'STOP_MARKET',
-                'workingType': 'MARK_PRICE',
-                'priceProtect': 'TRUE',
-                'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
-                'stopPrice': str(round(np.float(TradedCurrency.open_positions[i]['short']['exit']*(1+2*TradedCurrency.fee_rate)), config.BASE_PRICE_PRECISION))
-            }
-            TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
 
-        else:
-            order_settings = {
-                'symbol': TradedCurrency.pair,
-                'side': 'SELL',
-                'positionSide': 'LONG',
-                'type': 'MARKET',
-                'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty'])
-            }
-            TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-            TradedCurrency.contracts[i]['long']['stop loss'] = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
-
-            TradedCurrency.open_positions[i]['long']['stop loss'] = np.float(TradedCurrency.contracts[i]['long']['stop loss']['avgPrice'])
-            TradedCurrency.open_positions[i]['long']['actualised'] = True
-            TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
-            TradedCurrency.open_positions[i]['long']['exit'] = TradedCurrency.open_positions[i]['long']['stop loss']
-            TradedCurrency.contracts[i]['long']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
-            TradedCurrency.update_ledgers(i)
-            TradedCurrency.close_position(i)
-
-            # Update portfolio content according to Binance Futures account balance
-            account_balance = Binance_API.get_futures_account_balance() 
-            if not TradedCurrency.real_mode:
-                account_balance['balance'] = TradedCurrency.capital
-            df_balance = utils.read_csv(config.balance_path)
-            df_balance = df_balance.append(account_balance, ignore_index=True)
-            utils.dump_as_csv(df_balance, config.balance_path)
-            return TradedCurrency
-
-        # elif price <= np.float(TradedCurrency.open_positions[i]['short']['exit']) - config.EPSILON:
-        #     order_settings = {
-        #         'symbol': TradedCurrency.pair,
-        #         'side': 'SELL',
-        #         'positionSide': 'LONG',
-        #         'type': 'MARKET',
-        #         'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty'])
-        #     }
-        #     TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-            
-        #     TradedCurrency.open_positions[i]['long']['stop loss'] = np.float(TradedCurrency.contracts[i]['long']['stop loss']['avgPrice'])
-        #     TradedCurrency.open_positions[i]['long']['actualised'] = True
-        #     TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
-        #     TradedCurrency.open_positions[i]['long']['exit'] = TradedCurrency.open_positions[i]['long']['stop loss']
-        #     TradedCurrency.contracts[i]['long']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
-        #     TradedCurrency.update_ledgers(i)
-        #     TradedCurrency.close_position(i)
-
-        #     # Update portfolio content according to Binance Futures account balance
-        #     account_balance = Binance_API.get_futures_account_balance() 
-        #     if not TradedCurrency.real_mode:
-        #         account_balance['balance'] = TradedCurrency.capital
-        #     df_balance = utils.read_csv(config.balance_path)
-        #     df_balance = df_balance.append(account_balance, ignore_index=True)
-        #     utils.dump_as_csv(df_balance, config.balance_path)
-        #     return TradedCurrency
-        # else:
-        #     order_settings = {
-        #         'symbol': TradedCurrency.pair,
-        #         'side': 'SELL',
-        #         'positionSide': 'LONG',
-        #         'type': 'STOP_MARKET',
-        #         'workingType': 'MARK_PRICE',
-        #         'priceProtect': 'TRUE',
-        #         'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
-        #         'stopPrice': str(round(np.float(TradedCurrency.open_positions[i]['short']['exit']) - config.EPSILON, config.BASE_PRICE_PRECISION))
-        #     }
-        #     TradedCurrency.contracts[i]['long']['stop loss'] = TradedCurrency.place_single_order(order_settings)
-
-        TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.contracts[i]['long']['stop loss']['stopPrice']
         TradedCurrency.open_positions[i]['long']['actualised'] = True
+        if TradedCurrency.update_price() > TradedCurrency.open_positions[i]['short']['exit'] * (1+2*TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit'] * (1+2*TradedCurrency.fee_rate)
+        elif TradedCurrency.update_price() > TradedCurrency.open_positions[i]['short']['exit'] * (1+TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit'] * (1+TradedCurrency.fee_rate)
+        else:
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit']
+
     else:
         TradedCurrency.open_positions[i]['short']['exit'] = TradedCurrency.open_positions[i]['short']['stop loss'] 
         TradedCurrency.open_positions[i]['short']['actualised'] = True
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'STOP LOSS 1'
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
-        TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['stop loss'] * (1+TradedCurrency.fee_rate)
         TradedCurrency.open_positions[i]['long']['actualised'] = True
-        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'])
+        if TradedCurrency.update_price() > TradedCurrency.open_positions[i]['short']['exit'] * (1+2*TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit'] * (1+2*TradedCurrency.fee_rate)
+        elif TradedCurrency.update_price() > TradedCurrency.open_positions[i]['short']['exit'] * (1+TradedCurrency.fee_rate):
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit'] * (1+TradedCurrency.fee_rate)
+        else:
+            TradedCurrency.open_positions[i]['long']['stop loss'] = TradedCurrency.open_positions[i]['short']['exit']
+
+        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] / TradedCurrency.open_positions[i]['short']['leverage']
+        money_back += TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] * (TradedCurrency.open_positions[i]['short']['entry']/TradedCurrency.open_positions[i]['short']['exit'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
 
     TradedCurrency.update_capital()
     return TradedCurrency
@@ -314,20 +183,29 @@ def first_short_stop_loss_activation(TradedCurrency, i):
 
 def long_stop_loss_closing(TradedCurrency, i):
     if TradedCurrency.real_mode:
-        # Update long stop loss contract & cancel long take profit contract
-        filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
+        stop_order_settings = {
+            'symbol': TradedCurrency.pair,
+            'side': 'SELL',
+            'positionSide': 'LONG',
+            'type': 'MARKET',
+            'quantity': str(TradedCurrency.contracts[i]['long']['order']['executedQty']),
+        }
+        filled_contract = TradedCurrency.place_single_order(stop_order_settings)
+        filled_contract = Binance_API.query_order(TradedCurrency.pair, filled_contract['orderId'])
         TradedCurrency.contracts[i]['long']['stop loss'] = filled_contract
         TradedCurrency.contracts[i]['long']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
         # Update open_positions
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['long']['exit'] = np.float(filled_contract['avgPrice'])
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'STOP LOSS 2'
     else:
         TradedCurrency.open_positions[i]['long']['exit'] = np.float(TradedCurrency.open_positions[i]['long']['stop loss'])
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
-        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'])
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'STOP LOSS 2'
+        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] / TradedCurrency.open_positions[i]['long']['leverage']
+        money_back += TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] * (TradedCurrency.open_positions[i]['long']['exit']/TradedCurrency.open_positions[i]['long']['entry'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
 
     # Store closed contracts and positions in order_ledger & trade_ledger
     TradedCurrency.update_ledgers(i)
@@ -345,21 +223,30 @@ def long_stop_loss_closing(TradedCurrency, i):
 
 def short_stop_loss_closing(TradedCurrency, i):
     if TradedCurrency.real_mode:    
-        # Update short stop loss contract & cancel short take profit contract
-        filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
+        stop_order_settings = {
+            'symbol': TradedCurrency.pair,
+            'side': 'BUY',
+            'positionSide': 'SHORT',
+            'type': 'MARKET',
+            'quantity': str(TradedCurrency.contracts[i]['short']['order']['executedQty']),
+        }
+        filled_contract = TradedCurrency.place_single_order(stop_order_settings)
+        filled_contract = Binance_API.query_order(TradedCurrency.pair, filled_contract['orderId'])
         TradedCurrency.contracts[i]['short']['stop loss'] = filled_contract
         TradedCurrency.contracts[i]['short']['take profit'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
         # Update open_positions
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['short']['exit'] = np.float(filled_contract['avgPrice'])
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'STOP LOSS 2'
     else:
         TradedCurrency.open_positions[i]['short']['exit'] =  np.float(TradedCurrency.open_positions[i]['short']['stop loss']) #close_price
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
-        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'])
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'STOP LOSS 2'
+        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] / TradedCurrency.open_positions[i]['short']['leverage']
+        money_back += TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] * (TradedCurrency.open_positions[i]['short']['entry']/TradedCurrency.open_positions[i]['short']['exit'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
-        
+
         # Store closed contracts and positions in order_ledger & trade_ledger
     TradedCurrency.update_ledgers(i)
     TradedCurrency.close_position(i)
@@ -376,20 +263,21 @@ def short_stop_loss_closing(TradedCurrency, i):
 
 def long_take_profit_closing(TradedCurrency, i):
     if TradedCurrency.real_mode:
-        # Update long take profit contract & cancel long stop loss contract
         filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['take profit']['orderId'])
         TradedCurrency.contracts[i]['long']['take profit'] = filled_contract
-        TradedCurrency.contracts[i]['long']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['long']['stop loss']['orderId'])
+        TradedCurrency.contracts[i]['long']['stop loss'] = 'CANCELLED'
         # Update open_positions
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['long']['exit'] = np.float(filled_contract['avgPrice'])
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'TAKE PROFIT'
     else:
         TradedCurrency.open_positions[i]['long']['exit'] = np.float(TradedCurrency.open_positions[i]['long']['take profit']) #close_price
         TradedCurrency.open_positions[i]['long']['exit time'] = round(tm.time(), 3)
-        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'])
+        TradedCurrency.open_positions[i]['long']['triggered on'] = 'TAKE PROFIT'
+        money_back = TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] / TradedCurrency.open_positions[i]['long']['leverage']
+        money_back += TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['entry'] * (TradedCurrency.open_positions[i]['long']['exit']/TradedCurrency.open_positions[i]['long']['entry'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['long']['qty'] * TradedCurrency.open_positions[i]['long']['exit'] * TradedCurrency.fee_rate
     
     # Store closed contracts and positions in order_ledger & trade_ledger
     TradedCurrency.update_ledgers(i)
@@ -407,21 +295,22 @@ def long_take_profit_closing(TradedCurrency, i):
 
 def short_take_profit_closing(TradedCurrency, i):
     if TradedCurrency.real_mode:
-        # Update short take profit contract & cancel short stop loss contract
         filled_contract = Binance_API.query_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['take profit']['orderId'])
         TradedCurrency.contracts[i]['short']['take profit'] = filled_contract
-        TradedCurrency.contracts[i]['short']['stop loss'] = Binance_API.cancel_order(TradedCurrency.pair, TradedCurrency.contracts[i]['short']['stop loss']['orderId'])
+        TradedCurrency.contracts[i]['short']['stop loss'] = 'CANCELLED'
         # Update open_positions
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
         TradedCurrency.open_positions[i]['short']['exit'] = np.float(filled_contract['avgPrice'])
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'TAKE PROFIT'
     else:
         TradedCurrency.open_positions[i]['short']['exit'] = np.float(TradedCurrency.open_positions[i]['short']['take profit']) #close_price
         TradedCurrency.open_positions[i]['short']['exit time'] = round(tm.time(), 3)
-        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry']
-        money_back -= ((TradedCurrency.leverage - 1) / TradedCurrency.leverage * TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'])
+        TradedCurrency.open_positions[i]['short']['triggered on'] = 'TAKE PROFIT'
+        money_back = TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] / TradedCurrency.open_positions[i]['short']['leverage']
+        money_back += TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['entry'] * (TradedCurrency.open_positions[i]['short']['entry']/TradedCurrency.open_positions[i]['short']['exit'] - 1)
+        money_back -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
         TradedCurrency.capital += money_back
-        TradedCurrency.capital -= TradedCurrency.open_positions[i]['short']['qty'] * TradedCurrency.open_positions[i]['short']['exit'] * TradedCurrency.fee_rate
-    
+
     # Store closed contracts and positions in order_ledger & trade_ledger
     TradedCurrency.update_ledgers(i)
     TradedCurrency.close_position(i)
@@ -514,60 +403,74 @@ def continue_recurrent_algorithm():
 
     # Every minute or so, we need to look if a conditional contract has been activated
     # Therefore, we will be able to update stop loss and take profit levels more accurately
+
+    # First: update stop loss levels if possible (level 1 & 2)
     for i in range(0, TradedCurrency.max_open_positions):
-        print(f"Evaluating position {i}")
         if TradedCurrency.open_positions[i] != None:
-            print('Tried sell case 1')
-            # Case: long stop loss activated
+            # Case: long update
+            if TradedCurrency.open_positions[i]['long']['actualised'] and TradedCurrency.open_positions[i]['long']['exit'] == 0:
+
+                reference_price = TradedCurrency.open_positions[i]['short']['exit']
+                stop_loss = TradedCurrency.open_positions[i]['long']['stop loss']
+                if stop_loss/reference_price == 1 and TradedCurrency.get_latest_close_price() > reference_price * (1 + TradedCurrency.fee_rate):
+                    TradedCurrency.open_positions[i]['long']['stop loss'] = reference_price * (1 + TradedCurrency.fee_rate)
+                    TradedCurrency.open_positions[i]['long']['covered fees'] = 1
+
+                stop_loss = TradedCurrency.open_positions[i]['long']['stop loss']
+                if stop_loss/reference_price == (1+TradedCurrency.fee_rate) and TradedCurrency.get_latest_close_price() > reference_price * (1 + 2*TradedCurrency.fee_rate):
+                    TradedCurrency.open_positions[i]['long']['stop loss'] = reference_price * (1 + 2*TradedCurrency.fee_rate)
+                    TradedCurrency.open_positions[i]['long']['covered fees'] = 2
+
+            # Case: short update
+            if TradedCurrency.open_positions[i]['short']['actualised'] and TradedCurrency.open_positions[i]['short']['exit'] == 0:
+
+                reference_price = TradedCurrency.open_positions[i]['long']['exit']
+                stop_loss = TradedCurrency.open_positions[i]['short']['stop loss']
+                if stop_loss/reference_price == 1 and TradedCurrency.get_latest_close_price() < reference_price * (1 - TradedCurrency.fee_rate):
+                    TradedCurrency.open_positions[i]['short']['stop loss'] = reference_price * (1 - TradedCurrency.fee_rate)
+                    TradedCurrency.open_positions[i]['short']['covered fees'] = 1
+
+                stop_loss = TradedCurrency.open_positions[i]['short']['stop loss']
+                if stop_loss/reference_price == (1-TradedCurrency.fee_rate) and TradedCurrency.get_latest_close_price() < reference_price * (1 - 2*TradedCurrency.fee_rate):
+                    TradedCurrency.open_positions[i]['short']['stop loss'] = reference_price * (1 - 2*TradedCurrency.fee_rate)
+                    TradedCurrency.open_positions[i]['short']['covered fees'] = 2
+
+
+        # Second: update positions according to stop loss and take profit
+        # Case: long stop loss activated
+        if TradedCurrency.open_positions[i] != None:
             if TradedCurrency.open_positions[i]['long']['actualised'] == False:
-                print('Step A passed')
                 if TradedCurrency.is_stop_loss_activated(i, 'long'):
-                    print('Step B passed')
                     TradedCurrency = first_long_stop_loss_activation(TradedCurrency, i)
         
+        # Case: short stop loss activated
         if TradedCurrency.open_positions[i] != None:
-            print('Tried sell case 2')
-            # Case: short stop loss activated
             if TradedCurrency.open_positions[i]['short']['actualised'] == False:
-                print('Step A passed')
                 if TradedCurrency.is_stop_loss_activated(i, 'short'):
-                    print('Step B passed')
                     TradedCurrency = first_short_stop_loss_activation(TradedCurrency, i)
         
+        # Case: closing actualised positions on long stop loss activation
         if TradedCurrency.open_positions[i] != None:
-            print('Tried sell case 3')
-            # Case: closing actualised positions on long stop loss activation
             if TradedCurrency.open_positions[i]['long']['actualised'] == True:
-                print('Step A passed')
                 if TradedCurrency.is_stop_loss_activated(i, 'long'):
-                    print('Step B passed')
                     TradedCurrency = long_stop_loss_closing(TradedCurrency, i)
                     
+        # Case: closing actualised positions on short stop loss activation
         if TradedCurrency.open_positions[i] != None:
-            print('Tried sell case 4')
-            # Case: closing actualised positions on short stop loss activation
             if TradedCurrency.open_positions[i]['short']['actualised'] == True:
-                print('Step A passed')
                 if TradedCurrency.is_stop_loss_activated(i, 'short'):
-                    print('Step B passed')
                     TradedCurrency = short_stop_loss_closing(TradedCurrency, i)
 
+        # Case: closing actualised positions on long take profit activation
         if TradedCurrency.open_positions[i] != None:
-            print('Tried sell case 5')
-            # Case: closing actualised positions on long take profit activation
             if TradedCurrency.open_positions[i]['long']['actualised'] == True:
-                print('Step A passed')
                 if TradedCurrency.is_take_profit_activated(i, 'long'):
-                    print('Step B passed')
                     TradedCurrency = long_take_profit_closing(TradedCurrency, i)
 
-        if TradedCurrency.open_positions[i] != None: 
-            print('Tried sell case 6')   
-            # Case: closing actualised positions on short take profit activation
+        # Case: closing actualised positions on short take profit activation
+        if TradedCurrency.open_positions[i] != None:
             if TradedCurrency.open_positions[i]['short']['actualised'] == True:
-                print('Step A passed')
                 if TradedCurrency.is_take_profit_activated(i, 'short'):
-                    print('Step B passed')
                     TradedCurrency = short_take_profit_closing(TradedCurrency, i)
 
     print('Minutely process executed')
@@ -607,13 +510,9 @@ def continue_recurrent_algorithm():
                 for contract in initial_activation_contracts:
                     if contract['positionSide'] == 'LONG' and contract['type'] == 'TAKE_PROFIT_MARKET':
                         TradedCurrency.contracts[available_position]['long']['take profit'] = contract
-                    elif contract['positionSide'] == 'LONG' and contract['type'] == 'STOP_MARKET':
-                        TradedCurrency.contracts[available_position]['long']['stop loss'] = contract
                     if contract['positionSide'] == 'SHORT' and contract['type'] == 'TAKE_PROFIT_MARKET':
                         TradedCurrency.contracts[available_position]['short']['take profit'] = contract
-                    elif contract['positionSide'] == 'SHORT' and contract['type'] == 'STOP_MARKET':
-                        TradedCurrency.contracts[available_position]['short']['stop loss'] = contract
-                    
+
             TradedCurrency.set_positions(available_position)
 
         # Update portfolio content according to Binance Futures account balance

@@ -17,7 +17,7 @@ except:
 
 if env.is_local():
     root = Path(os.getcwd())
-    root = root.parent if root.name != 'SSX999_HEDGE' else root
+    root = root.parent if root.name != 'SSX999_HEDGE-V2' else root
     
     keys_path = root / 'keys'
     public_key_path = keys_path / 'API_Public_Key'
@@ -53,10 +53,10 @@ EPSILON = 10 # USDT/base
 TIMEFRAME = '15m'
 TIMEDELTA = '15M'
 
-LEVERAGE = 5
+LEVERAGE = 125
 STOP_LOSS = 0.004
 TAKE_PROFIT = 0.01
-REAL_MODE = True # True will perform the strategy on Binance
+REAL_MODE = False # True will perform the strategy on Binance
 
 FAST_PERIOD = 4
 SLOW_PERIOD = 10
@@ -78,7 +78,10 @@ TRADE_LEDGER_COLUMNS = [
     'entry', 'exit', 'qty',
     'leverage', 'stop loss',
     'take profit', 'actualised',
-    'type', 'abs capital gain', 'capital gain'
+    'covered fees', 'triggered on',
+    'type', 'abs capital gain %', 
+    'abs capital gain', 'capital gain',
+    'fees', 'net capital gain'
 ]
 ACCOUNT_BALANCE_COLUMNS = [
     'accountAlias', 'asset',
