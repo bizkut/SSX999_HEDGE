@@ -49,13 +49,13 @@ QUOTE = 'USDT'
 PAIR = BASE + QUOTE
 BASE_AMOUNT_PRECISION = 3
 BASE_PRICE_PRECISION = 2
-EPSILON = 10
-TIMEFRAME = '1h'
-TIMEDELTA = '1H'
+EPSILON = 10 # USDT/base
+TIMEFRAME = '15m'
+TIMEDELTA = '15M'
 
 LEVERAGE = 5
-STOP_LOSS = 0.007
-TAKE_PROFIT = 0.03
+STOP_LOSS = 0.004
+TAKE_PROFIT = 0.01
 REAL_MODE = True # True will perform the strategy on Binance
 
 FAST_PERIOD = 4
@@ -77,7 +77,8 @@ TRADE_LEDGER_COLUMNS = [
     'entry time', 'exit time', 'id',
     'entry', 'exit', 'qty',
     'leverage', 'stop loss',
-    'take profit', 'actualised'
+    'take profit', 'actualised',
+    'type', 'abs capital gain', 'capital gain'
 ]
 ACCOUNT_BALANCE_COLUMNS = [
     'accountAlias', 'asset',

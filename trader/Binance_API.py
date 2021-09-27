@@ -12,7 +12,7 @@ import hmac
 import json
 import hashlib
 import requests
-from urllib.parse import urlencode
+from urllib.parse import quote_from_bytes, urlencode
 
 try:
     from trader import utils
@@ -461,6 +461,10 @@ def create_order(order_settings: dict):
     """
     url_path = '/fapi/v1/order'
     order = send_signed_request('POST', url_path, order_settings)
+    if not 'orderId' in order.keys():
+        print(f'Error in Binance_API.create_order()\nOrder creation failed\n{order}')
+        return create_order(order_settings)
+
     labels_to_convert = ['cumQty', 'cumQuote', 'executedQty', 'avgPrice', 'origQty', 'price', 'stopPrice', 'activatePrice', 'priceRate']
     for label in order.keys():
         if label in labels_to_convert:
@@ -468,7 +472,7 @@ def create_order(order_settings: dict):
     return order
 
 
-def place_mutliple_orders(all_order_settings: list, recvWindow=1500):
+def place_multiple_orders(all_order_settings: list, recvWindow=1500):
     """
     Send in a new order.
 
@@ -513,7 +517,7 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1500):
             "priceRate": "0.3",         // callback rate, only return with TRAILING_STOP_MARKET order
             "updateTime": 1566818724722,
             "workingType": "CONTRACT_PRICE",
-            "priceProtect": false            // if conditional order trigger is protected   
+            "priceProtect": true            // if conditional order trigger is protected   
         }
     """
     url_path = '/fapi/v1/batchOrders'
@@ -523,6 +527,22 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1500):
     all_orders = '[' + ','.join(all_orders) + ']'
     params = {'batchOrders': all_orders, 'recvWindow': recvWindow}
     orders = send_signed_request('POST', url_path, params)
+
+    # Check that all orders jave been successfully created simultaneously
+    successful_orders = []
+    for order in orders:
+        if 'orderId' in order.keys():
+            order_info = {
+                'orderId': order['orderId'],
+                'pair': order['symbol']
+            }
+            successful_orders.append(order_info)
+    if len(successful_orders) != len(all_order_settings):
+        for order in successful_orders:
+            cancel_order(order['pair'], order['orderId'])
+        print(f'Error in Binance_API.place_multiple_orders()\nOrders creation failed\n{orders}')
+        return place_multiple_orders(all_order_settings)
+
     labels_to_convert = ['cumQty', 'cumQuote', 'executedQty', 'avgPrice', 'origQty', 'price', 'stopPrice', 'activatePrice', 'priceRate']
     for i in range(len(orders)):
         for label in orders[i].keys():
@@ -546,6 +566,9 @@ def query_order(pair: str, orderId: int, recvWindow=1500):
     url_path = '/fapi/v1/order'
     params = {'symbol': pair, 'orderId': orderId, 'recvWindow': recvWindow}
     order = send_signed_request('GET', url_path, params)
+    if not 'orderId' in order.keys():
+        print(f'Error in Binance_API.query_order()\nOrder query failed\n{order}')
+        return query_order(pair, orderId)
     return order
 
 
@@ -577,12 +600,21 @@ def cancel_order(pair: str, orderId: int, recvWindow=1500):
         recvWindow (int): time in milliseconds after which the request must be aborted
 
     Response:
-        True if order has been successfully canceled, else False 
+        order details
     """
     url_path = '/fapi/v1/order'
     params = {'symbol': pair, 'orderId': orderId, 'recvWindow': recvWindow}
     response = send_signed_request('DELETE', url_path, params)
-    return response
+    if 'orderId' in response.keys() and 'status' in response.keys():
+        if response['orderId'] == orderId and response['status'] == 'CANCELED':
+            return response    
+    elif not ('orderId' in response.keys() and 'status' in response.keys()):
+        querried_order = query_order(pair, orderId)
+        if querried_order['status'] == 'CANCELED':
+            return querried_order
+        print(f'Error in Binance_API.cancel_order()\nOrder cancellation failed\n{response}')
+        return cancel_order(pair, orderId)
+
 
 
 def cancel_all_open_orders(pair: str, recvWindow=1500):

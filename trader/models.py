@@ -50,15 +50,15 @@ class Currency(object):
             }
         self.LONG = []
         self.SHORT = []
-        self.pnl = 0
 
         t = pd.Timestamp(int(tm.time()), unit='s')
+        divider = int(pd.Timedelta(config.TIMEDELTA).to_timedelta64()/10**9/60)
         self.next_timestamp = pd.Timestamp(
             year=t.year,
             month=t.month,
             day=t.day,
             hour=(t.hour),
-            minute=0 if 'h' in config.TIMEFRAME else t.minute
+            minute=divider*(t.minute//divider) # if 'h' in config.TIMEFRAME else t.minute
         ) + self.timedelta
 
         while not Binance_API.is_hedge_mode():
@@ -81,7 +81,7 @@ class Currency(object):
         return price
 
     def set_positions(self, position_idx):
-        t = int(tm.time() * 1000)
+        t = int(tm.time())
 
         if self.real_mode:
             long_price = np.float(self.contracts[position_idx]['long']['order']['avgPrice']) # or 'price'
@@ -133,7 +133,8 @@ class Currency(object):
         }
         self.id += 1
         self.n_open_positions += 1
-        self.capital -= (_long['entry']*_long['qty'] + _short['entry']*_short['qty'])
+        self.capital -= (_long['entry']*_long['qty']/self.leverage + _short['entry']*_short['qty']/self.leverage)
+        self.capital -= (self.fee_rate * (_long['entry']*_long['qty'] + _short['entry']*_short['qty']))
         self.open_positions[position_idx] = {'long': _long, 'short': _short}
         return
 
@@ -191,6 +192,8 @@ class Currency(object):
             'side': 'SELL',
             'positionSide': 'LONG',
             'type': 'STOP_MARKET',
+            'workingType': 'MARK_PRICE',
+            'priceProtect': 'TRUE',
             'quantity': str(self.contracts[position_idx]['long']['order']['executedQty']),
             'stopPrice': str(round(long_entry * (1-self.stop_loss), 2))
         }
@@ -199,6 +202,8 @@ class Currency(object):
             'side': 'BUY',
             'positionSide': 'SHORT',
             'type': 'STOP_MARKET',
+            'workingType': 'MARK_PRICE',
+            'priceProtect': 'TRUE',
             'quantity': str(self.contracts[position_idx]['short']['order']['executedQty']),
             'stopPrice': str(round(short_entry * (1+self.stop_loss), 2))
         }
@@ -207,6 +212,8 @@ class Currency(object):
             'side': 'SELL',
             'positionSide': 'LONG',
             'type': 'TAKE_PROFIT_MARKET',
+            'workingType': 'MARK_PRICE',
+            'priceProtect': 'TRUE',
             'quantity': str(self.contracts[position_idx]['long']['order']['executedQty']),
             'stopPrice': str(round(long_entry * (1+self.take_profit), 2))
         }
@@ -215,6 +222,8 @@ class Currency(object):
             'side': 'BUY',
             'positionSide': 'SHORT',
             'type': 'TAKE_PROFIT_MARKET',
+            'workingType': 'MARK_PRICE',
+            'priceProtect': 'TRUE',
             'quantity': str(self.contracts[position_idx]['short']['order']['executedQty']),
             'stopPrice': str(round(short_entry * (1-self.take_profit), 2))
         }
@@ -222,11 +231,8 @@ class Currency(object):
         return orders_list
 
     def place_orders_simultaneously(self, order_list):
-        """
-        # **************** Fonction à revérifier **************** #
-        """
         recvWindow = 2000 if len(order_list) == 2 else 4000
-        posted_orders = Binance_API.place_mutliple_orders(order_list, recvWindow)       
+        posted_orders = Binance_API.place_multiple_orders(order_list, recvWindow)       
         return posted_orders
     
     def cancel_order(self, orderId):
@@ -246,7 +252,7 @@ class Currency(object):
             return self.place_single_order(order_settings)
         return order
 
-    def is_stop_loss_activated(self, position_idx, position_side, ohlc=None):
+    def is_stop_loss_activated(self, position_idx, position_side):
         """
         Returns True if stop loss has been filled during the last time interval, else False.
 
@@ -267,16 +273,16 @@ class Currency(object):
         # Case: simulation mode
         else:
             if position_side == 'long':
-                case1 = self.open_positions[position_idx]['long']['actualised'] == False and ohlc['low_price'].iloc[-1] < self.open_positions[position_idx]['long']['stop loss']
-                case2 = self.open_positions[position_idx]['long']['actualised'] == True and ohlc['low_price'].iloc[-1] < self.open_positions[position_idx]['long']['stop loss']
+                case1 = self.open_positions[position_idx]['long']['actualised'] == False and self.update_price() < self.open_positions[position_idx]['long']['stop loss']
+                case2 = self.open_positions[position_idx]['long']['actualised'] == True and self.update_price() < self.open_positions[position_idx]['long']['stop loss']
                 case2 = case2 and self.open_positions[position_idx]['long']['exit'] == 0
             else:
-                case1 = self.open_positions[position_idx]['short']['actualised'] == False and ohlc['high_price'].iloc[-1] > self.open_positions[position_idx]['short']['stop loss']
-                case2 = self.open_positions[position_idx]['short']['actualised'] == True and ohlc['high_price'].iloc[-1] > self.open_positions[position_idx]['short']['stop loss']
+                case1 = self.open_positions[position_idx]['short']['actualised'] == False and self.update_price() > self.open_positions[position_idx]['short']['stop loss']
+                case2 = self.open_positions[position_idx]['short']['actualised'] == True and self.update_price() > self.open_positions[position_idx]['short']['stop loss']
                 case2 = case2 and self.open_positions[position_idx]['short']['exit'] == 0
             return case1 or case2
 
-    def is_take_profit_activated(self, position_idx, position_side, ohlc=None):
+    def is_take_profit_activated(self, position_idx, position_side):
         """
         Returns True if take profit has been filled during the last time interval, else False.
 
@@ -293,9 +299,9 @@ class Currency(object):
             case = (self.open_positions[position_idx][position_side]['actualised'] == True and contract_status == 'FILLED')
         else:
             if position_side == 'long':
-                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] < ohlc['high_price'].iloc[-1])
+                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] < self.update_price())
             else:
-                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] > ohlc['low_price'].iloc[-1])
+                case = (self.open_positions[position_idx][position_side]['actualised'] == True and self.open_positions[position_idx][position_side]['take profit'] > self.update_price())
         return case
 
 
@@ -314,6 +320,13 @@ class Currency(object):
 
 
     def close_position(self, position_idx):
+        # Compute final trade stats
+        self.open_positions[position_idx]['long']['type'] = 'LONG'
+        self.open_positions[position_idx]['short']['type'] = 'SHORT'
+        self.open_positions[position_idx]['long']['abs capital gain'] = (self.open_positions[position_idx]['long']['exit']/self.open_positions[position_idx]['long']['entry'] - 1) * self.leverage / 100
+        self.open_positions[position_idx]['short']['abs capital gain'] = (self.open_positions[position_idx]['short']['entry']/self.open_positions[position_idx]['short']['exit'] - 1) * self.leverage / 100
+        self.open_positions[position_idx]['long']['capital gain'] = self.open_positions[position_idx]['long']['abs capital gain'] * self.open_positions[position_idx]['long']['qty'] * self.open_positions[position_idx]['long']['entry']
+        self.open_positions[position_idx]['short']['capital gain'] = self.open_positions[position_idx]['short']['abs capital gain'] * self.open_positions[position_idx]['short']['qty'] * self.open_positions[position_idx]['short']['exit']
         # Update TradeLedger
         trade_ledger = utils.read_csv(config.trade_ledger_path)
         trade_ledger = trade_ledger.append(self.open_positions[position_idx]['long'], ignore_index=True)
@@ -322,8 +335,9 @@ class Currency(object):
         # Update capital & n_open_positions
         long = self.open_positions[position_idx]['long']
         short = self.open_positions[position_idx]['short']
-        self.capital += (long['qty'] * long['entry'] * long['leverage'] * long['exit'] / long['entry'] - (long['leverage'] - 1)*long['qty']*long['entry'])
-        self.capital += (short['qty'] * short['entry'] * short['leverage'] * short['entry'] / short['exit'] - (short['leverage'] - 1)*short['qty'] * short['entry'])
+        self.LONG.append(long)
+        self.SHORT.append(short)
+        self.update_capital()
         self.open_positions[position_idx] = None
         self.contracts[position_idx] = {
             'long': {'order': None, 'stop loss': None, 'take profit': None},
@@ -339,8 +353,31 @@ class Currency(object):
         limit = 3*config.SLOW_PERIOD
         ohlc = Binance_API.get_contract_klines(self.pair, self.timeframe, contractType='PERPETUAL', limit=limit)
         ohlc = pd.DataFrame(ohlc, columns=config.OHLC_COLUMNS)
-        ohlc = ohlc[ohlc['open_time'] < 1000*self.next_timestamp.timestamp()]
+        ohlc = ohlc[ohlc['open_time'] < 1000*(self.next_timestamp - self.timedelta).timestamp()]
         ohlc['ema_fast'] = ema_indicator(ohlc['close_price'], config.FAST_PERIOD)
         ohlc['ema_slow'] = ema_indicator(ohlc['close_price'], config.SLOW_PERIOD)
         return ohlc
 
+    def update_contracts(self):
+        for i in range(self.n_open_positions):
+            for position_side in ['long', 'short']:
+                sl_prev_status = self.contracts[i][position_side]['stop loss']['status']
+                tp_prev_status = self.contracts[i][position_side]['take profit']['status']
+                self.contracts[i][position_side]['stop loss'] = Binance_API.query_order(self.pair, self.contracts[i][position_side]['stop loss']['orderId'])
+                self.contracts[i][position_side]['take profit'] = Binance_API.query_order(self.pair, self.contracts[i][position_side]['take profit']['orderId'])                 
+                
+                if self.open_positions[i][position_side]['actualised'] == True:
+                    case_0 = (sl_prev_status != self.contracts[i][position_side]['stop loss']['status'])
+                    case_1 = (tp_prev_status != self.contracts[i][position_side]['take profit']['status'])
+                    if case_0 or case_1:
+                        self.update_ledgers(i)
+                        self.close_position(i)
+                
+        return
+
+    def update_capital(self):
+        if self.real_mode:
+            available_account_balance = Binance_API.get_futures_account_balance()
+            available_account_balance = available_account_balance['availableBalance']
+            self.capital = available_account_balance
+        return

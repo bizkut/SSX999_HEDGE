@@ -10,11 +10,11 @@ GCP_REGION="europe-west6"
 SCHEDULE="*/1 * * * *"
 # ----- ----------------- -----
 
-FUNCTION_NAME="hedger"
-TOPIC_NAME="hedger_topic"
+FUNCTION_NAME="hedger1"
+TOPIC_NAME="hedger_topic1"
 CODE_ENTRYPOINT=main
 
-JOB_NAME="hedger_job"
+JOB_NAME="hedger_job1"
 MESSAGE_BODY="Run successful"
 
 update-requirements:
@@ -46,8 +46,8 @@ delete: delete-cloud-function delete-scheduler-job
 
 
 run-local: export IS_LOCAL=true
-run-local:
-	poetry run python main.py
+run-local: install-pip-requirements
+run-local: poetry run python main.py
 
 
 run-bucket: export IS_LOCAL=false

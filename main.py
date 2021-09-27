@@ -36,6 +36,6 @@ def main(data, context):
 if __name__ == '__main__':
     if env.is_local():
         data, context = {}, {}
-        #main(data, context)
+        main(data, context)
     else:
         main()
