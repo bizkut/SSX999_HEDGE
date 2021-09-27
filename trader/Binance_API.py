@@ -12,20 +12,24 @@ import hmac
 import json
 import hashlib
 import requests
-from urllib.parse import urlencode
+from urllib.parse import quote_from_bytes, urlencode
 
-import utils
-import env
-import config
+try:
+    from trader import utils
+    from trader import config
+except:
+    import utils
+    import config
 
 
 def read_keys():
-    if env.is_local():
-        api_key = utils.read_file(path=config.public_key_path)
-        api_secret = utils.read_file(path=config.private_key_path)
-        return api_key, api_secret
-    # ***************************** WRITE LATER ***************************** #
-    # ******************* Google Cloud Platform Management ****************** #
+    api_key = utils.read_file(path=config.public_key_path)
+    api_secret = utils.read_file(path=config.private_key_path)
+    if type(api_key) == bytes:
+        api_key = api_key.decode('utf-8')
+    if type(api_secret) == bytes:
+        api_secret = api_secret.decode('utf-8')
+    return api_key, api_secret
 
 
 KEY, SECRET = read_keys()
@@ -335,7 +339,7 @@ def get_price(pair: str):
 # ACCOUNT ENDPOINTS
 # -----------------
 
-def get_futures_account_balance(recvWindow=1000):
+def get_futures_account_balance(recvWindow=1500):
     """
     Read Futures account balance (V2)
 
@@ -374,7 +378,7 @@ def get_futures_account_balance(recvWindow=1000):
     return None
 
 
-def is_hedge_mode(recvWindow=1000):
+def is_hedge_mode(recvWindow=1500):
     """
     Get user's position mode (Hedge Mode or One-way Mode ) on EVERY symbols.
 
@@ -390,7 +394,7 @@ def is_hedge_mode(recvWindow=1000):
     return dualSidePosition
 
 
-def change_position_mode(hedgeMode: bool, recvWindow=1000):
+def change_position_mode(hedgeMode: bool, recvWindow=1500):
     """
     Change user's position mode (Hedge Mode or One-way Mode ) on EVERY symbols.
 
@@ -457,6 +461,10 @@ def create_order(order_settings: dict):
     """
     url_path = '/fapi/v1/order'
     order = send_signed_request('POST', url_path, order_settings)
+    if not 'orderId' in order.keys():
+        print(f'Error in Binance_API.create_order()\nOrder creation failed\n{order}')
+        return create_order(order_settings)
+
     labels_to_convert = ['cumQty', 'cumQuote', 'executedQty', 'avgPrice', 'origQty', 'price', 'stopPrice', 'activatePrice', 'priceRate']
     for label in order.keys():
         if label in labels_to_convert:
@@ -464,7 +472,7 @@ def create_order(order_settings: dict):
     return order
 
 
-def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
+def place_multiple_orders(all_order_settings: list, recvWindow=1500):
     """
     Send in a new order.
 
@@ -509,7 +517,7 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
             "priceRate": "0.3",         // callback rate, only return with TRAILING_STOP_MARKET order
             "updateTime": 1566818724722,
             "workingType": "CONTRACT_PRICE",
-            "priceProtect": false            // if conditional order trigger is protected   
+            "priceProtect": true            // if conditional order trigger is protected   
         }
     """
     url_path = '/fapi/v1/batchOrders'
@@ -519,6 +527,22 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
     all_orders = '[' + ','.join(all_orders) + ']'
     params = {'batchOrders': all_orders, 'recvWindow': recvWindow}
     orders = send_signed_request('POST', url_path, params)
+
+    # Check that all orders jave been successfully created simultaneously
+    successful_orders = []
+    for order in orders:
+        if 'orderId' in order.keys():
+            order_info = {
+                'orderId': order['orderId'],
+                'pair': order['symbol']
+            }
+            successful_orders.append(order_info)
+    if len(successful_orders) != len(all_order_settings):
+        for order in successful_orders:
+            cancel_order(order['pair'], order['orderId'])
+        print(f'Error in Binance_API.place_multiple_orders()\nOrders creation failed\n{orders}')
+        return place_multiple_orders(all_order_settings)
+
     labels_to_convert = ['cumQty', 'cumQuote', 'executedQty', 'avgPrice', 'origQty', 'price', 'stopPrice', 'activatePrice', 'priceRate']
     for i in range(len(orders)):
         for label in orders[i].keys():
@@ -527,7 +551,7 @@ def place_mutliple_orders(all_order_settings: list, recvWindow=1000):
     return orders
 
 
-def query_order(pair: str, orderId: int, recvWindow=1000):
+def query_order(pair: str, orderId: int, recvWindow=1500):
     """
     Check an order's status.
 
@@ -542,10 +566,13 @@ def query_order(pair: str, orderId: int, recvWindow=1000):
     url_path = '/fapi/v1/order'
     params = {'symbol': pair, 'orderId': orderId, 'recvWindow': recvWindow}
     order = send_signed_request('GET', url_path, params)
+    if not 'orderId' in order.keys():
+        print(f'Error in Binance_API.query_order()\nOrder query failed\n{order}')
+        return query_order(pair, orderId)
     return order
 
 
-def query_current_all_open_orders(pair: str, recvWindow=1000):
+def query_current_all_open_orders(pair: str, recvWindow=1500):
     """
     Get all open orders on a symbol. Careful when accessing this with no symbol.
 
@@ -563,7 +590,7 @@ def query_current_all_open_orders(pair: str, recvWindow=1000):
     return orders
 
 
-def cancel_order(pair: str, orderId: int, recvWindow=1000):
+def cancel_order(pair: str, orderId: int, recvWindow=1500):
     """
     Cancel an active order.
 
@@ -573,15 +600,24 @@ def cancel_order(pair: str, orderId: int, recvWindow=1000):
         recvWindow (int): time in milliseconds after which the request must be aborted
 
     Response:
-        True if order has been successfully canceled, else False 
+        order details
     """
     url_path = '/fapi/v1/order'
     params = {'symbol': pair, 'orderId': orderId, 'recvWindow': recvWindow}
     response = send_signed_request('DELETE', url_path, params)
-    return response['status'] == 'CANCELED'
+    if 'orderId' in response.keys() and 'status' in response.keys():
+        if response['orderId'] == orderId and response['status'] == 'CANCELED':
+            return response    
+    elif not ('orderId' in response.keys() and 'status' in response.keys()):
+        querried_order = query_order(pair, orderId)
+        if querried_order['status'] == 'CANCELED':
+            return querried_order
+        print(f'Error in Binance_API.cancel_order()\nOrder cancellation failed\n{response}')
+        return cancel_order(pair, orderId)
 
 
-def cancel_all_open_orders(pair: str, recvWindow=1000):
+
+def cancel_all_open_orders(pair: str, recvWindow=1500):
     """
     Cancel all active orders.
 
@@ -598,7 +634,7 @@ def cancel_all_open_orders(pair: str, recvWindow=1000):
     return response['code'] == 200
 
 
-def change_initial_leverage(pair: str, leverage: int, recvWindow=1000):
+def change_initial_leverage(pair: str, leverage: int, recvWindow=1500):
     """
     Change user's initial leverage of specific symbol market.
 
@@ -621,7 +657,7 @@ def change_initial_leverage(pair: str, leverage: int, recvWindow=1000):
     return leverage_set
 
 
-def change_margin_type(pair: str, marginType: str, recvWindow=1000):
+def change_margin_type(pair: str, marginType: str, recvWindow=1500):
     """
     Set margin type as either 'ISOLATED' or 'CROSSED' for a specific pair.
 
@@ -647,7 +683,7 @@ def change_margin_type(pair: str, marginType: str, recvWindow=1000):
         return response['code'] == '200'
 
 
-def get_current_position_information(pair: str, recvWindow=1000):
+def get_current_position_information(pair: str, recvWindow=1500):
     """
     Get current position information.
 
@@ -690,12 +726,12 @@ def get_current_position_information(pair: str, recvWindow=1000):
     return positions
 
 
-def is_margin_cross(pair: str, recvWindow=1000):
+def is_margin_cross(pair: str, recvWindow=1500):
     margin_type = get_current_position_information(pair, recvWindow)[0]['marginType']
     return margin_type == 'cross'
 
 
-def get_commission_rate(pair: str, recvWindow=1000):
+def get_commission_rate(pair: str, recvWindow=1500):
     """
     Get user's current commission rates for a specific pair.
 

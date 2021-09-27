@@ -3,18 +3,18 @@
 .PHONY: extract-dependencies deploy-cloud-function deploy-scheduler-job deploy
 
 # ----- personal settings -----
-GCP_PROJECT_ID="<PROJECT-ID>"
-GCP_SERVICE_ACCOUNT="<SERVICE-ACCOUNT-NAME"
-GCP_BUCKET="<BUCKET-NAME>"
+GCP_PROJECT_ID="ssx999-hedge"
+GCP_SERVICE_ACCOUNT="ssx999-hedge-account@ssx999-hedge.iam.gserviceaccount.com"
+GCP_BUCKET="ssx999-hedge-b1"
 GCP_REGION="europe-west6"
-SCHEDULE="1 */4 * * *"
+SCHEDULE="*/1 * * * *"
 # ----- ----------------- -----
 
-FUNCTION_NAME="trader"
-TOPIC_NAME="trader_topic"
+FUNCTION_NAME="hedger1"
+TOPIC_NAME="hedger_topic1"
 CODE_ENTRYPOINT=main
 
-JOB_NAME="trader_job"
+JOB_NAME="hedger_job1"
 MESSAGE_BODY="Run successful"
 
 update-requirements:
@@ -46,8 +46,8 @@ delete: delete-cloud-function delete-scheduler-job
 
 
 run-local: export IS_LOCAL=true
-run-local:
-	poetry run python main.py
+run-local: install-pip-requirements
+run-local: poetry run python main.py
 
 
 run-bucket: export IS_LOCAL=false
