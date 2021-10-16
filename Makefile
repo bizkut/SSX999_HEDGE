@@ -3,10 +3,10 @@
 .PHONY: extract-dependencies deploy-cloud-function deploy-scheduler-job deploy
 
 # ----- personal settings -----
-GCP_PROJECT_ID="ssx999-hedge"
-GCP_SERVICE_ACCOUNT="ssx999-hedge-account@ssx999-hedge.iam.gserviceaccount.com"
-GCP_BUCKET="ssx999-hedge-b1"
-GCP_REGION="europe-west6"
+GCP_PROJECT_ID="..."
+GCP_SERVICE_ACCOUNT="..."
+GCP_BUCKET="..."
+GCP_REGION="..."
 SCHEDULE="*/1 * * * *"
 # ----- ----------------- -----
 
